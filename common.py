@@ -130,4 +130,3 @@ class FlowTable:
                     candidates.append((src_ip, len(ports)))
         return candidates
 
-    
