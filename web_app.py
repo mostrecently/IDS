@@ -196,17 +196,3 @@ async def rules_page(request: Request):
     """
     return HTMLResponse(content=html)
 
-
-# ----- ЗАПУСК СЕРВЕРА -----
-
-if __name__ == "__main__":
-    print("=" * 60)
-    print(open("logo.txt", "r", encoding="utf-8").read())
-    print("ЗАПУСК ВЕБ-СЕРВЕРА")
-    print("   http://127.0.0.1:8008")
-    print("=" * 60)
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8008
-    )
