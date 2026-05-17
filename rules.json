@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "description": "Starter ruleset for a passive Scapy-based IDS.",
+  "rules": [
+    {
+      "id": "rule-001",
+      "name": "HTTP GET request",
+      "enabled": true,
+      "protocol": "TCP",
+      "dst_port": 80,
+      "payload_contains": "GET ",
+      "severity": "info",
+      "action": "log",
+      "description": "Detect basic HTTP GET traffic."
+    },
+    {
+      "id": "rule-002",
+      "name": "DNS over UDP",
+      "enabled": true,
+      "protocol": "UDP",
+      "dst_port": 53,
+      "severity": "info",
+      "action": "log",
+      "description": "Detect DNS queries over UDP."
+    },
+    {
+      "id": "rule-003",
+      "name": "Suspicious Telnet",
+      "enabled": true,
+      "protocol": "TCP",
+      "dst_port": 23,
+      "severity": "medium",
+      "action": "alert",
+      "description": "Flag Telnet traffic for review."
+    }
+  ]
+}
