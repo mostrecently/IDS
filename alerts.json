@@ -1,6 +1,13 @@
 [
   {
-    "timestamp": 1778975248.7326176,
+    "timestamp": 1778978628.6520658,
+    "src_ip": "192.168.1.100",
+    "dst_ip": "N/A",
+    "rule_name": "Port scan detected",
+    "details": "Scanned 25 unique ports"
+  },
+  {
+    "timestamp": 1778978686.893379,
     "src_ip": "192.168.1.100",
     "dst_ip": "N/A",
     "rule_name": "Port scan detected",

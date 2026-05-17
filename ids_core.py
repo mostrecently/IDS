@@ -1,7 +1,12 @@
-from scapy.all import sniff, IP, IPv6, TCP, UDP, ICMP, Raw
+from scapy.all import sniff, IP, IPv6, TCP, UDP, ICMP, Raw, conf
 import time
 import threading
 from common import FlowTable, Packet
+import scapy.arch.windows as win
+
+conf.use_pcap = True
+conf.use_npcap = True
+conf.sniff_promisc = False
 
 class PacketSniffer:
     def __init__(self, flow_table: FlowTable, interface: str = None):
