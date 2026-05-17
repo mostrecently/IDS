@@ -1,7 +1,9 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Optional
 import time
 import threading
+import json
+import os
 
 @dataclass
 class Flow:
@@ -106,6 +108,7 @@ class FlowTable:
     def _clean_loop(self):
         while not self._stop_event.is_set():
             self._cleanup_expired()
+            self.check_for_scans(threshold=100)
             self._stop_event.wait(self.cleanup_interval)
 
     def start_cleaner(self):
@@ -130,3 +133,32 @@ class FlowTable:
                     candidates.append((src_ip, len(ports)))
         return candidates
 
+    def _save_alert(self, alert: Alert):
+        alert_dict = asdict(alert)
+        if os.path.exists("alerts.json"):
+            with open("alerts.json", "r", encoding="utf-8") as f:
+                alerts = json.load(f)
+
+            alerts.append(alert_dict)
+
+            with open("alerts.json", "w", encoding="utf-8") as f:
+                json.dump(alerts, f, indent=2, ensure_ascii=False)
+        else:
+            alerts = [alert_dict]
+            with open("alerts.json", "w", encoding="utf-8") as f:
+                json.dump(alerts, f, indent=2, ensure_ascii=False)
+
+    def check_for_scans(self, threshold=100):
+        candidates = self.get_port_scan_candidates(threshold)
+        for src_ip, ports_count in candidates:
+            if src_ip in self.alerted_ips:
+                continue
+            alert = Alert(
+                timestamp=time.time(),
+                src_ip=src_ip,
+                dst_ip="N/A",
+                rule_name="Port scan detected",
+                details=f"Scanned {ports_count} unique ports"
+            )
+            self._save_alert(alert)
+            self.alerted_ips.add(src_ip)
