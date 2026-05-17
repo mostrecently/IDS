@@ -89,7 +89,7 @@ class FlowTable:
                 last_seen = time.time(),
                 packets_count = 1
             )
-            if hasattr(pkt, 'flags') and (pkt.flags==0x02):
+            if hasattr(pkt, 'flags') and (pkt.flags == 0x02):
                 flow.syn_count += 1
                 flow.dst_ports.add(pkt.dst_port)
             if hasattr(pkt, "payload"):

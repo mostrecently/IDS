@@ -18,7 +18,7 @@ class PacketSniffer:
         dst_port = None
         flags = None
         payload = None
-        
+
         if IP in pkt:
             src_ip = pkt[IP].src
             dst_ip = pkt[IP].dst
