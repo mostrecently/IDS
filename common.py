@@ -25,6 +25,17 @@ class Alert:
     rule_name: str
     details: str
 
+@dataclass
+class Packet:
+    src_ip: str
+    dst_ip: str
+    src_port: int
+    dst_port: int
+    protocol: int
+    flags: int
+    timestamp: float
+    payload: bytes
+
 class FlowTable:
     def __init__(self, timeout=60, cleanup_interval=30):
         self._stop_event = threading.Event()
