@@ -46,7 +46,7 @@ class FlowTable:
         self.cleanup_interval = cleanup_interval
         self.timeout = timeout
         self.alerted_ips = set()
-        self.alerted_targets = set()
+        self.alerted_targets = {}
         self.flows = {}
 
     def _make_key(self, src_ip: str, dst_ip: str, src_port: int, dst_port: int, protocol: int) -> tuple:
@@ -59,7 +59,8 @@ class FlowTable:
             flow = self.flows[key]
             if(time.time() - flow.last_seen) > self.timeout:
                 del self.flows[key]
-                flow = Flow(
+                if hasattr(pkt, 'flags') and (pkt.flags==0x02):
+                    flow = Flow(
                     src_ip = pkt.src_ip,
                     dst_ip = pkt.dst_ip,
                     src_port = pkt.src_port,
@@ -69,15 +70,25 @@ class FlowTable:
                     first_seen = time.time(),
                     last_seen = time.time(),
                     packets_count = 1
-                )
-                if hasattr(pkt, 'flags') and (pkt.flags==0x02):
+                    )
                     flow.syn_count += 1
                     flow.dst_ports.add(pkt.dst_port)
+                else:
+                    flow = Flow(
+                    src_ip = pkt.src_ip,
+                    dst_ip = pkt.dst_ip,
+                    src_port = pkt.src_port,
+                    dst_port = pkt.dst_port,
+                    protocol = pkt.protocol,
+                    syn_timestamps = [],
+                    first_seen = time.time(),
+                    last_seen = time.time(),
+                    packets_count = 1
+                    )
                 self.flows[key] = flow
             else:
                 if hasattr(pkt, 'flags') and (pkt.flags==0x02):
                     flow.syn_count += 1
-                    flow.syn_timestamps.append(pkt.timestamp)
                     flow.dst_ports.add(pkt.dst_port)
                 flow.last_seen = time.time()
                 flow.packets_count += 1
@@ -85,7 +96,8 @@ class FlowTable:
                 flow.payload += pkt.payload
                 flow.payload = flow.payload[-256:]
         else:
-            flow = Flow(
+            if hasattr(pkt, 'flags') and (pkt.flags == 0x02):
+                flow = Flow(
                 src_ip = pkt.src_ip,
                 dst_ip = pkt.dst_ip,
                 src_port = pkt.src_port,
@@ -95,11 +107,21 @@ class FlowTable:
                 first_seen = time.time(),
                 last_seen = time.time(),
                 packets_count = 1
-            )
-            if hasattr(pkt, 'flags') and (pkt.flags == 0x02):
+                )
                 flow.syn_count += 1
-                flow.syn_timestamps.append(pkt.timestamp)
                 flow.dst_ports.add(pkt.dst_port)
+            else:
+                flow = Flow(
+                src_ip = pkt.src_ip,
+                dst_ip = pkt.dst_ip,
+                src_port = pkt.src_port,
+                dst_port = pkt.dst_port,
+                protocol = pkt.protocol,
+                syn_timestamps = [],
+                first_seen = time.time(),
+                last_seen = time.time(),
+                packets_count = 1
+                )
             if hasattr(pkt, "payload"):
                 flow.payload += pkt.payload[-256:]
             self.flows[key] = flow
@@ -170,13 +192,16 @@ class FlowTable:
             self._save_alert(alert)
             self.alerted_ips.add(src_ip)
 
-    def check_for_syn_flood(self, threshold=100, window_seconds=5):
+    def check_for_syn_flood(self, threshold=100, window_seconds=5, cooldown_seconds=600):
         current_time = time.time()
         for flow in self.flows.values():
             if flow.protocol != 6:
                 continue
-            elif flow.dst_ip in self.alerted_targets:
-                continue
+
+            last_alert_time = self.alerted_targets.get(flow.dst_ip)
+            if last_alert_time is not None:
+                if current_time - last_alert_time < cooldown_seconds:
+                    continue
 
             current_syn_timestamps = []
             for t in flow.syn_timestamps:
@@ -190,7 +215,7 @@ class FlowTable:
                 src_ip="N/A",
                 dst_ip=flow.dst_ip,
                 rule_name="SYN Flood",
-                details=f"{len(current_syn_timestamps)} SYN scanned in last {window_seconds} seconds"
+                details=f"{len(current_syn_timestamps)} SYN scanned in last {window_seconds} seconds to {flow.dst_ip}:{flow.dst_port}"
             )
             self._save_alert(alert)
-            self.alerted_targets.add(flow.dst_ip)
+            self.alerted_targets[flow.dst_ip] = current_time
