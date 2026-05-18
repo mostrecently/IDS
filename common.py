@@ -15,6 +15,7 @@ class Flow:
     first_seen: float
     last_seen: float
     dst_ports: set = field(default_factory=set)
+    syn_timestamps: list = field(default_factory=list)
     packets_count: int = 0
     payload: bytes = b''
     syn_count: int = 0
@@ -45,6 +46,7 @@ class FlowTable:
         self.cleanup_interval = cleanup_interval
         self.timeout = timeout
         self.alerted_ips = set()
+        self.alerted_targets = set()
         self.flows = {}
 
     def _make_key(self, src_ip: str, dst_ip: str, src_port: int, dst_port: int, protocol: int) -> tuple:
@@ -63,6 +65,7 @@ class FlowTable:
                     src_port = pkt.src_port,
                     dst_port = pkt.dst_port,
                     protocol = pkt.protocol,
+                    syn_timestamps = [pkt.timestamp],
                     first_seen = time.time(),
                     last_seen = time.time(),
                     packets_count = 1
@@ -74,6 +77,7 @@ class FlowTable:
             else:
                 if hasattr(pkt, 'flags') and (pkt.flags==0x02):
                     flow.syn_count += 1
+                    flow.syn_timestamps.append(pkt.timestamp)
                     flow.dst_ports.add(pkt.dst_port)
                 flow.last_seen = time.time()
                 flow.packets_count += 1
@@ -87,12 +91,14 @@ class FlowTable:
                 src_port = pkt.src_port,
                 dst_port = pkt.dst_port,
                 protocol = pkt.protocol,
+                syn_timestamps = [pkt.timestamp],
                 first_seen = time.time(),
                 last_seen = time.time(),
                 packets_count = 1
             )
             if hasattr(pkt, 'flags') and (pkt.flags == 0x02):
                 flow.syn_count += 1
+                flow.syn_timestamps.append(pkt.timestamp)
                 flow.dst_ports.add(pkt.dst_port)
             if hasattr(pkt, "payload"):
                 flow.payload += pkt.payload[-256:]
@@ -109,6 +115,7 @@ class FlowTable:
         while not self._stop_event.is_set():
             self._cleanup_expired()
             self.check_for_scans(threshold=100)
+            self.check_for_syn_flood(threshold=100, window_seconds=5)
             self._stop_event.wait(self.cleanup_interval)
 
     def start_cleaner(self):
@@ -162,3 +169,28 @@ class FlowTable:
             )
             self._save_alert(alert)
             self.alerted_ips.add(src_ip)
+
+    def check_for_syn_flood(self, threshold=100, window_seconds=5):
+        current_time = time.time()
+        for flow in self.flows.values():
+            if flow.protocol != 6:
+                continue
+            elif flow.dst_ip in self.alerted_targets:
+                continue
+
+            current_syn_timestamps = []
+            for t in flow.syn_timestamps:
+                if t > (current_time - window_seconds):
+                    current_syn_timestamps.append(t)
+            flow.syn_timestamps = current_syn_timestamps
+            
+            if len(current_syn_timestamps) >= threshold:
+                alert = Alert(
+                timestamp=current_time,
+                src_ip="N/A",
+                dst_ip=flow.dst_ip,
+                rule_name="SYN Flood",
+                details=f"{len(current_syn_timestamps)} SYN scanned in last {window_seconds} seconds"
+            )
+            self._save_alert(alert)
+            self.alerted_targets.add(flow.dst_ip)
