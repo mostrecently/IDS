@@ -38,7 +38,7 @@ class PacketSniffer:
         if TCP in pkt:
             src_port = pkt[TCP].sport
             dst_port = pkt[TCP].dport
-            flags = pkt[TCP].flags
+            flags = int(pkt[TCP].flags)
         
         elif UDP in pkt:
             src_port = pkt[UDP].sport
@@ -68,7 +68,6 @@ class PacketSniffer:
     
     def _packet_handler(self, pkt):
         info = self._extract_packet_info(pkt)
-
         if info is None:
             return
 
