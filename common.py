@@ -88,7 +88,6 @@ class FlowTable:
                 self.flows[key] = flow
             else:
                 if hasattr(pkt, 'flags') and (pkt.flags==0x02):
-                    print(f"SYN packet received for {pkt.dst_ip}:{pkt.dst_port}")
                     flow.syn_count += 1
                     flow.dst_ports.add(pkt.dst_port)
                     flow.syn_timestamps.append(pkt.timestamp)
@@ -139,7 +138,7 @@ class FlowTable:
         while not self._stop_event.is_set():
             self._cleanup_expired()
             self.check_for_scans(threshold=100)
-            self.check_for_syn_flood(threshold=1, window_seconds=5)
+            self.check_for_syn_flood(threshold=100, window_seconds=5)
             self._stop_event.wait(self.cleanup_interval)
 
     def start_cleaner(self):
@@ -219,6 +218,5 @@ class FlowTable:
                 rule_name="SYN Flood",
                 details=f"{len(current_syn_timestamps)} SYN scanned in last {window_seconds} seconds to {flow.dst_ip}:{flow.dst_port}"
                 )
-                print(f"DEBUG: creating alert for {flow.dst_ip}, timestamps={len(current_syn_timestamps)}")
                 self._save_alert(alert)
                 self.alerted_targets[flow.dst_ip] = current_time
