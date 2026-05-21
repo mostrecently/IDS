@@ -13,10 +13,6 @@ import uvicorn
 ALERTS_FILE = "alerts.json"
 RULES_FILE  = "rules.json"
 
-# ----- ОЧЕРЕДЬ ДЛЯ БЕЗОПАСНОЙ ЗАПИСИ -----
-# Queue — потокобезопасная очередь 
-alert_queue = Queue()
-
 # ----- ПРИЛОЖЕНИЕ -----
 app = FastAPI(title="Система обнаружения вторжений (IDS)")
 app.mount("/static", StaticFiles(directory="."), name="static")
@@ -40,38 +36,6 @@ def read_json_file(filename: str):
     
     return data
 
-
-def write_alert_to_file(alert: dict):
- 
-   
-    alerts = read_json_file(ALERTS_FILE)
-    
-    # Если read_json_file вернула словарь (ошибка) — создаём новый список
-    if not isinstance(alerts, list):
-        alerts = []
-    
-    alerts.append(alert)
-    
-    with open(ALERTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(alerts, f, indent=2, ensure_ascii=False)
-
-
-def process_alert_queue():
-   
-    print("[Queue] Обработчик очереди алертов запущен")
-    while True:
-        alert = alert_queue.get()
-        
-        write_alert_to_file(alert)
-        
-        alert_queue.task_done()
-        
-        print(f"[Queue] Алерт записан: {alert.get('rule_name', 'Unknown')} от {alert.get('src_ip', 'Unknown')}")
-
-
-# ----- ЗАПУСК ФОНОВОГО ОБРАБОТЧИКА -----
-queue_thread = threading.Thread(target=process_alert_queue, daemon=True)
-queue_thread.start()
 
 # ----- ЭНДПОИНТЫ -----
 
@@ -453,54 +417,3 @@ async def rules_page(request: Request):
     </html>
     """
     return HTMLResponse(content=html)
-
-
-# ===== НОВЫЙ ЭНДПОИНТ: ДОБАВЛЕНИЕ АЛЕРТА =====
-
-@app.post("/api/alerts")
-async def add_alert(alert: dict):
-    """
-    POST-эндпоинт для добавления нового алерта.
-    
-    Принимает JSON с алертом, добавляет в очередь на запись.
-    
-    Пример JSON для отправки:
-    {
-        "src_ip": "192.168.1.100",
-        "dst_ip": "192.168.1.1",
-        "src_port": 54321,
-        "dst_port": 80,
-        "protocol": "TCP",
-        "rule_name": "SQL Injection",
-        "payload": "SELECT * FROM users"
-    }
-    """
-    
-    if "timestamp" not in alert:
-        alert["timestamp"] = datetime.now().isoformat()
-    
-    
-    alert_queue.put(alert)
-    
-    return {
-        "status": "ok",
-        "message": f"Алерт добавлен в очередь",
-        "queue_size": alert_queue.qsize()
-    }
-
-
-@app.post("/api/alerts/bulk")
-async def add_alerts_bulk(alerts: list):
- 
-    count = 0
-    for alert in alerts:
-        if "timestamp" not in alert:
-            alert["timestamp"] = datetime.now().isoformat()
-        alert_queue.put(alert)
-        count += 1
-    
-    return {
-        "status": "ok",
-        "message": f"Добавлено {count} алертов в очередь",
-        "queue_size": alert_queue.qsize()
-    }
