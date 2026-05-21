@@ -9,7 +9,7 @@ from ids_core import PacketSniffer
 if __name__ == "__main__":
     ft = FlowTable(timeout=60, cleanup_interval=30)
     ft.start_cleaner()
-    sniffer = PacketSniffer(flow_table=ft, interface=None)
+    sniffer = PacketSniffer(flow_table=ft, interface="Software Loopback Interface 1")
     sniffer.start()
 
     def web_run():
