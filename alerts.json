@@ -5,5 +5,12 @@
     "dst_ip": "N/A",
     "rule_name": "Port scan detected",
     "details": "Scanned 25 unique ports"
+  },
+  {
+    "timestamp": 1779406632.3451643,
+    "src_ip": "N/A",
+    "dst_ip": "127.0.0.1",
+    "rule_name": "SYN Flood",
+    "details": "1 SYN scanned in last 5 seconds to 127.0.0.1:8089"
   }
 ]
