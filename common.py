@@ -16,6 +16,7 @@ class Flow:
     last_seen: float
     dst_ports: set = field(default_factory=set)
     syn_timestamps: list = field(default_factory=list)
+    udp_timestamps: list = field(default_factory=list)
     packets_count: int = 0
     payload: bytes = b''
     syn_count: int = 0
@@ -46,7 +47,8 @@ class FlowTable:
         self.cleanup_interval = cleanup_interval
         self.timeout = timeout
         self.alerted_ips = set()
-        self.alerted_targets = {}
+        self.alerted_syn_targets = {}
+        self.alerted_udp_targets = {}
         self.flows = {}
 
     def _make_key(self, src_ip: str, dst_ip: str, src_port: int, dst_port: int, protocol: int) -> tuple:
@@ -57,75 +59,51 @@ class FlowTable:
         key = self._make_key(pkt.src_ip, pkt.dst_ip, pkt.src_port, pkt.dst_port, pkt.protocol)
         if key in self.flows:
             flow = self.flows[key]
-            if(time.time() - flow.last_seen) > self.timeout:
+            if (time.time() - flow.last_seen) > self.timeout:
                 del self.flows[key]
-                if hasattr(pkt, 'flags') and (pkt.flags==0x02):
-                    flow = Flow(
-                    src_ip = pkt.src_ip,
-                    dst_ip = pkt.dst_ip,
-                    src_port = pkt.src_port,
-                    dst_port = pkt.dst_port,
-                    protocol = pkt.protocol,
-                    syn_timestamps = [pkt.timestamp],
-                    first_seen = time.time(),
-                    last_seen = time.time(),
-                    packets_count = 1
-                    )
-                    flow.syn_count += 1
-                    flow.dst_ports.add(pkt.dst_port)
-                else:
-                    flow = Flow(
-                    src_ip = pkt.src_ip,
-                    dst_ip = pkt.dst_ip,
-                    src_port = pkt.src_port,
-                    dst_port = pkt.dst_port,
-                    protocol = pkt.protocol,
-                    syn_timestamps = [],
-                    first_seen = time.time(),
-                    last_seen = time.time(),
-                    packets_count = 1
-                    )
-                self.flows[key] = flow
-            else:
-                if hasattr(pkt, 'flags') and (pkt.flags==0x02):
-                    flow.syn_count += 1
-                    flow.dst_ports.add(pkt.dst_port)
-                    flow.syn_timestamps.append(pkt.timestamp)
-                flow.last_seen = time.time()
-                flow.packets_count += 1
-            if hasattr(pkt, "payload"):
-                flow.payload += pkt.payload
-                flow.payload = flow.payload[-256:]
+                flow = None
         else:
-            if hasattr(pkt, 'flags') and (pkt.flags == 0x02):
-                flow = Flow(
-                src_ip = pkt.src_ip,
-                dst_ip = pkt.dst_ip,
-                src_port = pkt.src_port,
-                dst_port = pkt.dst_port,
-                protocol = pkt.protocol,
-                syn_timestamps = [pkt.timestamp],
-                first_seen = time.time(),
-                last_seen = time.time(),
-                packets_count = 1
-                )
-                flow.syn_count += 1
+            flow = None
+    
+        if flow is None:
+            flow = Flow(
+                src_ip=pkt.src_ip,
+                dst_ip=pkt.dst_ip,
+                src_port=pkt.src_port,
+                dst_port=pkt.dst_port,
+                protocol=pkt.protocol,
+                first_seen=time.time(),
+                last_seen=time.time(),
+                packets_count=1
+            )
+            if pkt.protocol == 6:  # TCP
+                if hasattr(pkt, 'flags') and (pkt.flags == 0x02):
+                    flow.syn_timestamps = [pkt.timestamp]
+                    flow.syn_count = 1
+                    flow.dst_ports.add(pkt.dst_port)
+            elif pkt.protocol == 17:  # UDP
+                flow.udp_timestamps = [pkt.timestamp]
                 flow.dst_ports.add(pkt.dst_port)
-            else:
-                flow = Flow(
-                src_ip = pkt.src_ip,
-                dst_ip = pkt.dst_ip,
-                src_port = pkt.src_port,
-                dst_port = pkt.dst_port,
-                protocol = pkt.protocol,
-                syn_timestamps = [],
-                first_seen = time.time(),
-                last_seen = time.time(),
-                packets_count = 1
-                )
-            if hasattr(pkt, "payload"):
-                flow.payload += pkt.payload[-256:]
+        
             self.flows[key] = flow
+            if hasattr(pkt, "payload"):
+                flow.payload = pkt.payload[-256:]
+            return flow
+    
+        flow.last_seen = time.time()
+        flow.packets_count += 1
+        if hasattr(pkt, "payload"):
+            flow.payload += pkt.payload
+            flow.payload = flow.payload[-256:]
+
+        if pkt.protocol == 6:
+            if hasattr(pkt, 'flags') and (pkt.flags == 0x02):
+                flow.syn_count += 1
+                flow.syn_timestamps.append(pkt.timestamp)
+                flow.dst_ports.add(pkt.dst_port)
+        elif pkt.protocol == 17:
+            flow.udp_timestamps.append(pkt.timestamp)
+            flow.dst_ports.add(pkt.dst_port)
         return flow
 
     def _cleanup_expired(self):
@@ -139,6 +117,7 @@ class FlowTable:
             self._cleanup_expired()
             self.check_for_scans(threshold=100)
             self.check_for_syn_flood(threshold=100, window_seconds=5)
+            self.check_for_udp_flood(threshold=100, window_seconds=5)
             self._stop_event.wait(self.cleanup_interval)
 
     def start_cleaner(self):
@@ -193,30 +172,70 @@ class FlowTable:
             self._save_alert(alert)
             self.alerted_ips.add(src_ip)
 
-    def check_for_syn_flood(self, threshold=100, window_seconds=5, cooldown_seconds=600):
+    def check_for_syn_flood(self, threshold=100, window_seconds=5, cooldown_seconds=5):
         current_time = time.time()
+
+        aggregated = {}
         for flow in self.flows.values():
             if flow.protocol != 6:
                 continue
-
-            last_alert_time = self.alerted_targets.get(flow.dst_ip)
-            if last_alert_time is not None:
-                if current_time - last_alert_time < cooldown_seconds:
-                    continue
-
-            current_syn_timestamps = []
-            for t in flow.syn_timestamps:
-                if t > (current_time - window_seconds):
-                    current_syn_timestamps.append(t)
-            flow.syn_timestamps = current_syn_timestamps
+            if flow.dst_ip not in aggregated:
+                aggregated[flow.dst_ip] = []
+            for ts in flow.syn_timestamps:
+                if ts > (current_time - window_seconds):
+                    aggregated[flow.dst_ip].append(ts)
+        
+        for dst_ip, timestamps in aggregated.items():
+            last_alert = self.alerted_syn_targets.get(dst_ip)
+            if last_alert is not None and current_time - last_alert < cooldown_seconds:
+                continue
             
-            if len(current_syn_timestamps) >= threshold:
+            if len(timestamps) >= threshold:
                 alert = Alert(
-                timestamp=current_time,
-                src_ip="N/A",
-                dst_ip=flow.dst_ip,
-                rule_name="SYN Flood",
-                details=f"{len(current_syn_timestamps)} SYN scanned in last {window_seconds} seconds to {flow.dst_ip}:{flow.dst_port}"
+                    timestamp=current_time,
+                    src_ip="N/A",
+                    dst_ip=dst_ip,
+                    rule_name="SYN Flood",
+                    details=f"{len(timestamps)} SYN packets in last {window_seconds} seconds to {dst_ip}"
                 )
                 self._save_alert(alert)
-                self.alerted_targets[flow.dst_ip] = current_time
+                self.alerted_syn_targets[dst_ip] = current_time
+        
+        for flow in self.flows.values():
+            if flow.protocol == 6:
+                fresh = [ts for ts in flow.syn_timestamps if ts > (current_time - window_seconds)]
+                flow.syn_timestamps = fresh
+
+    def check_for_udp_flood(self, threshold=500, window_seconds=5, cooldown_seconds=5):
+        current_time = time.time()
+        
+        aggregated = {}
+        for flow in self.flows.values():
+            if flow.protocol != 17:
+                continue
+            if flow.dst_ip not in aggregated:
+                aggregated[flow.dst_ip] = []
+            for ts in flow.udp_timestamps:
+                if ts > (current_time - window_seconds):
+                    aggregated[flow.dst_ip].append(ts)
+
+        for dst_ip, timestamps in aggregated.items():
+            last_alert = self.alerted_udp_targets.get(dst_ip)
+            if last_alert is not None and current_time - last_alert < cooldown_seconds:
+                continue
+            
+            if len(timestamps) >= threshold:
+                alert = Alert(
+                    timestamp=current_time,
+                    src_ip="N/A",
+                    dst_ip=dst_ip,
+                    rule_name="UDP Flood",
+                    details=f"{len(timestamps)} UDP packets in last {window_seconds} seconds to {dst_ip}"
+                )
+                self._save_alert(alert)
+                self.alerted_udp_targets[dst_ip] = current_time
+        
+        for flow in self.flows.values():
+            if flow.protocol == 17:
+                fresh = [ts for ts in flow.udp_timestamps if ts > (current_time - window_seconds)]
+                flow.udp_timestamps = fresh
