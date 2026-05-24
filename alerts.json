@@ -1,16 +1,58 @@
 [
   {
-    "timestamp": 1779046886.665963,
+    "timestamp": 1779644272.8333015,
     "src_ip": "192.168.1.100",
     "dst_ip": "N/A",
     "rule_name": "Port scan detected",
     "details": "Scanned 25 unique ports"
   },
   {
-    "timestamp": 1779406632.3451643,
+    "timestamp": 1779644483.7226908,
+    "src_ip": "N/A",
+    "dst_ip": "127.0.0.1",
+    "rule_name": "UDP Flood",
+    "details": "313 UDP packets in last 5 seconds to 127.0.0.1"
+  },
+  {
+    "timestamp": 1779644897.1784854,
     "src_ip": "N/A",
     "dst_ip": "127.0.0.1",
     "rule_name": "SYN Flood",
-    "details": "1 SYN scanned in last 5 seconds to 127.0.0.1:8089"
+    "details": "426 SYN packets in last 5 seconds to 127.0.0.1"
+  },
+  {
+    "timestamp": 1779644902.1808176,
+    "src_ip": "N/A",
+    "dst_ip": "127.0.0.1",
+    "rule_name": "SYN Flood",
+    "details": "406 SYN packets in last 5 seconds to 127.0.0.1"
+  },
+  {
+    "timestamp": 1779644932.1945512,
+    "src_ip": "N/A",
+    "dst_ip": "127.0.0.1",
+    "rule_name": "UDP Flood",
+    "details": "434 UDP packets in last 5 seconds to 127.0.0.1"
+  },
+  {
+    "timestamp": 1779644937.197685,
+    "src_ip": "N/A",
+    "dst_ip": "127.0.0.1",
+    "rule_name": "UDP Flood",
+    "details": "348 UDP packets in last 5 seconds to 127.0.0.1"
+  },
+  {
+    "timestamp": 1779645226.8208525,
+    "src_ip": "N/A",
+    "dst_ip": "127.0.0.1",
+    "rule_name": "UDP Flood",
+    "details": "442 UDP packets in last 5 seconds to 127.0.0.1"
+  },
+  {
+    "timestamp": 1779645256.8232374,
+    "src_ip": "N/A",
+    "dst_ip": "127.0.0.1",
+    "rule_name": "SYN Flood",
+    "details": "422 SYN packets in last 5 seconds to 127.0.0.1"
   }
 ]
