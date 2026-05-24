@@ -18,6 +18,7 @@ class Flow:
     syn_timestamps: list = field(default_factory=list)
     udp_timestamps: list = field(default_factory=list)
     icmp_timestamps: list = field(default_factory=list)
+    packet_timestamps: list = field(default_factory=list)
     packets_count: int = 0
     payload: bytes = b''
     syn_count: int = 0
@@ -51,6 +52,7 @@ class FlowTable:
         self.alerted_syn_targets = {}
         self.alerted_udp_targets = {}
         self.alerted_icmp_targets = {}
+        self.alerted_bruteforce = {}
         self.flows = {}
 
     def _make_key(self, src_ip: str, dst_ip: str, src_port: int, dst_port: int, protocol: int) -> tuple:
@@ -89,10 +91,11 @@ class FlowTable:
             elif pkt.protocol == 1:
                 flow.icmp_timestamps = [pkt.timestamp]
             
-        
+
             self.flows[key] = flow
             if hasattr(pkt, "payload"):
                 flow.payload = pkt.payload[-256:]
+            flow.packet_timestamps.append(pkt.timestamp)
             return flow
     
         flow.last_seen = time.time()
@@ -111,6 +114,7 @@ class FlowTable:
             flow.dst_ports.add(pkt.dst_port)
         elif pkt.protocol == 1:
             flow.icmp_timestamps.append(pkt.timestamp)
+        flow.packet_timestamps.append(pkt.timestamp)
         return flow
 
     def _cleanup_expired(self):
@@ -126,6 +130,7 @@ class FlowTable:
             self.check_for_syn_flood(threshold=100, window_seconds=5)
             self.check_for_udp_flood(threshold=100, window_seconds=5)
             self.check_for_icmp_flood(threshold=100, window_seconds=5)
+            self.check_for_bruteforce(threshold=10, window_seconds=5)
             self._stop_event.wait(self.cleanup_interval)
 
     def start_cleaner(self):
@@ -281,3 +286,32 @@ class FlowTable:
             if flow.protocol == 17:
                 fresh = [ts for ts in flow.icmp_timestamps if ts > (current_time - window_seconds)]
                 flow.icmp_timestamps = fresh
+
+    def check_for_bruteforce(self, threshold=10, window_seconds=5, cooldown_seconds=5):
+        bruteforce_ports = {21, 22, 23, 80, 443, 445, 1433, 3306, 3389}
+        current_time = time.time()
+
+        for flow in self.flows.values():
+            if flow.dst_port not in bruteforce_ports:
+                continue
+            if flow.protocol != 6:
+                continue
+
+            key = (flow.src_ip, flow.dst_ip, flow.dst_port)
+            last_alert = self.alerted_bruteforce.get(key)
+            if last_alert is not None and current_time - last_alert < cooldown_seconds:
+                continue
+            
+            fresh = [ts for ts in flow.packet_timestamps if ts > current_time - window_seconds]
+            flow.packet_timestamps = fresh
+
+            if len(fresh) >= threshold:
+                alert = Alert (
+                    timestamp=current_time,
+                    src_ip=flow.src_ip,
+                    dst_ip=flow.dst_ip,
+                    rule_name="Bruteforce",
+                    details=f"{len(fresh)} packets in last {window_seconds} seconds to {flow.dst_ip}:{flow.dst_port}"
+                )
+                self._save_alert(alert)
+                self.alerted_bruteforce[key] = current_time
