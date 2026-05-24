@@ -54,5 +54,19 @@
     "dst_ip": "127.0.0.1",
     "rule_name": "SYN Flood",
     "details": "422 SYN packets in last 5 seconds to 127.0.0.1"
+  },
+  {
+    "timestamp": 1779648228.494357,
+    "src_ip": "N/A",
+    "dst_ip": "127.0.0.1",
+    "rule_name": "ICMP Flood",
+    "details": "534 ICMP packets in last 5 seconds to 127.0.0.1"
+  },
+  {
+    "timestamp": 1779648288.4963248,
+    "src_ip": "N/A",
+    "dst_ip": "127.0.0.1",
+    "rule_name": "ICMP Flood",
+    "details": "1251 ICMP packets in last 5 seconds to 127.0.0.1"
   }
 ]
