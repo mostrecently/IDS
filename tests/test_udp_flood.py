@@ -1,6 +1,8 @@
 from scapy.all import IP, UDP, send
-import time
 import sys
+import os
+import time
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 def send_udp_flood(target_ip, target_port, duration_seconds=30):
     """Отправляет UDP-пакеты в течение заданного времени."""

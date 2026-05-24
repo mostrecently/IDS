@@ -1,4 +1,7 @@
+import sys
+import os
 import time
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from common import FlowTable
 from ids_core import PacketSniffer
 

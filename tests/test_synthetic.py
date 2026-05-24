@@ -1,4 +1,7 @@
+import sys
+import os
 import time
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from common import FlowTable, Packet
 
 ft = FlowTable(timeout=60, cleanup_interval=30)

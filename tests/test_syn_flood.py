@@ -1,6 +1,8 @@
 from scapy.all import IP, TCP, send, RandShort
 import sys
+import os
 import time
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 def send_syn_flood(target_ip, target_port, duration_seconds=30):
     """Отправляет SYN-пакеты в бесконечном цикле в течение заданного времени."""
