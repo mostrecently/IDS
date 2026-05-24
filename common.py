@@ -17,6 +17,7 @@ class Flow:
     dst_ports: set = field(default_factory=set)
     syn_timestamps: list = field(default_factory=list)
     udp_timestamps: list = field(default_factory=list)
+    icmp_timestamps: list = field(default_factory=list)
     packets_count: int = 0
     payload: bytes = b''
     syn_count: int = 0
@@ -49,6 +50,7 @@ class FlowTable:
         self.alerted_ips = set()
         self.alerted_syn_targets = {}
         self.alerted_udp_targets = {}
+        self.alerted_icmp_targets = {}
         self.flows = {}
 
     def _make_key(self, src_ip: str, dst_ip: str, src_port: int, dst_port: int, protocol: int) -> tuple:
@@ -76,14 +78,17 @@ class FlowTable:
                 last_seen=time.time(),
                 packets_count=1
             )
-            if pkt.protocol == 6:  # TCP
+            if pkt.protocol == 6:
                 if hasattr(pkt, 'flags') and (pkt.flags == 0x02):
                     flow.syn_timestamps = [pkt.timestamp]
                     flow.syn_count = 1
                     flow.dst_ports.add(pkt.dst_port)
-            elif pkt.protocol == 17:  # UDP
+            elif pkt.protocol == 17:
                 flow.udp_timestamps = [pkt.timestamp]
                 flow.dst_ports.add(pkt.dst_port)
+            elif pkt.protocol == 1:
+                flow.icmp_timestamps = [pkt.timestamp]
+            
         
             self.flows[key] = flow
             if hasattr(pkt, "payload"):
@@ -104,6 +109,8 @@ class FlowTable:
         elif pkt.protocol == 17:
             flow.udp_timestamps.append(pkt.timestamp)
             flow.dst_ports.add(pkt.dst_port)
+        elif pkt.protocol == 1:
+            flow.icmp_timestamps.append(pkt.timestamp)
         return flow
 
     def _cleanup_expired(self):
@@ -118,6 +125,7 @@ class FlowTable:
             self.check_for_scans(threshold=100)
             self.check_for_syn_flood(threshold=100, window_seconds=5)
             self.check_for_udp_flood(threshold=100, window_seconds=5)
+            self.check_for_icmp_flood(threshold=100, window_seconds=5)
             self._stop_event.wait(self.cleanup_interval)
 
     def start_cleaner(self):
@@ -239,3 +247,37 @@ class FlowTable:
             if flow.protocol == 17:
                 fresh = [ts for ts in flow.udp_timestamps if ts > (current_time - window_seconds)]
                 flow.udp_timestamps = fresh
+
+    def check_for_icmp_flood(self, threshold=50, window_seconds=5, cooldown_seconds=5):
+        current_time = time.time()
+        
+        aggregated = {}
+        for flow in self.flows.values():
+            if flow.protocol != 1:
+                continue
+            if flow.dst_ip not in aggregated:
+                aggregated[flow.dst_ip] = []
+            for ts in flow.icmp_timestamps:
+                if ts > (current_time - window_seconds):
+                    aggregated[flow.dst_ip].append(ts)
+
+        for dst_ip, timestamps in aggregated.items():
+            last_alert = self.alerted_icmp_targets.get(dst_ip)
+            if last_alert is not None and current_time - last_alert < cooldown_seconds:
+                continue
+            
+            if len(timestamps) >= threshold:
+                alert = Alert(
+                    timestamp=current_time,
+                    src_ip="N/A",
+                    dst_ip=dst_ip,
+                    rule_name="ICMP Flood",
+                    details=f"{len(timestamps)} ICMP packets in last {window_seconds} seconds to {dst_ip}"
+                )
+                self._save_alert(alert)
+                self.alerted_icmp_targets[dst_ip] = current_time
+        
+        for flow in self.flows.values():
+            if flow.protocol == 17:
+                fresh = [ts for ts in flow.icmp_timestamps if ts > (current_time - window_seconds)]
+                flow.icmp_timestamps = fresh
