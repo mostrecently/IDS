@@ -6,7 +6,7 @@ from datetime import datetime
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from common import save_alert
+from common import _save_alert
 import uvicorn
 
 # ----- НАСТРОЙКИ -----
@@ -39,7 +39,7 @@ def process_alert_queue():
     print("[Queue] Обработчик очереди алертов запущен")
     while True:
         alert = alert_queue.get()
-        save_alert(alert)
+        _save_alert(alert)
         alert_queue.task_done()
         print(f"[Queue] Алерт записан: {alert.get('rule_name', 'Unknown')} от {alert.get('src_ip', 'Unknown')}")
 
@@ -108,7 +108,7 @@ async def home_page(request: Request):
         else:
             bg = '#f5faff'; border = '#3498db'; badge_bg = '#e0effb'; badge_color = '#2471a3'; badge_text = 'НИЗ'
         alert_rows += f"""<tr style="border-left:4px solid {border}; background:{bg};">
-            <td>{a.get('timestamp','—')[:19]}</td>
+            <td>{str(a.get('timestamp', '—'))[:19]}</td>
             <td>{a.get('src_ip','—')}</td>
             <td>{a.get('dst_ip','—')}</td>
             <td>{a.get('rule_name','Unknown')}</td>
@@ -474,7 +474,7 @@ async def alerts_page(request: Request):
         else:
             bg = '#f5faff'; border = '#3498db'; badge_bg = '#e0effb'; badge_color = '#2471a3'; badge_text = 'НИЗ'
         rows += f"""<tr style="border-left:4px solid {border}; background:{bg};">
-            <td>{a.get('timestamp','—')[:19]}</td>
+            <td>{str(a.get('timestamp', '—'))[:19]}</td>
             <td>{a.get('src_ip','—')}</td>
             <td>{a.get('dst_ip','—')}</td>
             <td>{a.get('rule_name','Unknown')}</td>
@@ -750,13 +750,3 @@ async def api_rules():
 async def api_stats():
     stats = get_stats()
     return stats
-
-
-# ----- ЗАПУСК -----
-if __name__ == "__main__":
-    print("=" * 60)
-    print("ЗАПУСК ВЕБ-СЕРВЕРА IDS (ФИНАЛ)")
-    print("   http://127.0.0.1:8000")
-    print("   Ctrl+C для остановки")
-    print("=" * 60)
-    uvicorn.run(app, host="0.0.0.0", port=8000)
