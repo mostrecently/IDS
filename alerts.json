@@ -1,86 +1,37 @@
 [
   {
-    "timestamp": 1779644272.8333015,
+    "timestamp": 1779827929.762262,
+    "src_ip": "N/A",
+    "dst_ip": "192.168.0.17",
+    "rule_name": "SYN Flood",
+    "details": "433 SYN packets in last 5 seconds to 192.168.0.17"
+  },
+  {
+    "timestamp": 1779828019.7741258,
+    "src_ip": "N/A",
+    "dst_ip": "192.168.0.17",
+    "rule_name": "ICMP Flood",
+    "details": "430 ICMP packets in last 5 seconds to 192.168.0.17"
+  },
+  {
+    "timestamp": 1779828049.7753468,
+    "src_ip": "192.168.0.17",
+    "dst_ip": "192.168.0.17",
+    "rule_name": "Bruteforce",
+    "details": "443 packets in last 5 seconds to 192.168.0.17:22"
+  },
+  {
+    "timestamp": 1779828064.6450367,
     "src_ip": "192.168.1.100",
     "dst_ip": "N/A",
     "rule_name": "Port scan detected",
     "details": "Scanned 25 unique ports"
   },
   {
-    "timestamp": 1779644483.7226908,
+    "timestamp": 1779828603.519411,
     "src_ip": "N/A",
-    "dst_ip": "127.0.0.1",
+    "dst_ip": "192.168.0.17",
     "rule_name": "UDP Flood",
-    "details": "313 UDP packets in last 5 seconds to 127.0.0.1"
-  },
-  {
-    "timestamp": 1779644897.1784854,
-    "src_ip": "N/A",
-    "dst_ip": "127.0.0.1",
-    "rule_name": "SYN Flood",
-    "details": "426 SYN packets in last 5 seconds to 127.0.0.1"
-  },
-  {
-    "timestamp": 1779644902.1808176,
-    "src_ip": "N/A",
-    "dst_ip": "127.0.0.1",
-    "rule_name": "SYN Flood",
-    "details": "406 SYN packets in last 5 seconds to 127.0.0.1"
-  },
-  {
-    "timestamp": 1779644932.1945512,
-    "src_ip": "N/A",
-    "dst_ip": "127.0.0.1",
-    "rule_name": "UDP Flood",
-    "details": "434 UDP packets in last 5 seconds to 127.0.0.1"
-  },
-  {
-    "timestamp": 1779644937.197685,
-    "src_ip": "N/A",
-    "dst_ip": "127.0.0.1",
-    "rule_name": "UDP Flood",
-    "details": "348 UDP packets in last 5 seconds to 127.0.0.1"
-  },
-  {
-    "timestamp": 1779645226.8208525,
-    "src_ip": "N/A",
-    "dst_ip": "127.0.0.1",
-    "rule_name": "UDP Flood",
-    "details": "442 UDP packets in last 5 seconds to 127.0.0.1"
-  },
-  {
-    "timestamp": 1779645256.8232374,
-    "src_ip": "N/A",
-    "dst_ip": "127.0.0.1",
-    "rule_name": "SYN Flood",
-    "details": "422 SYN packets in last 5 seconds to 127.0.0.1"
-  },
-  {
-    "timestamp": 1779648228.494357,
-    "src_ip": "N/A",
-    "dst_ip": "127.0.0.1",
-    "rule_name": "ICMP Flood",
-    "details": "534 ICMP packets in last 5 seconds to 127.0.0.1"
-  },
-  {
-    "timestamp": 1779648288.4963248,
-    "src_ip": "N/A",
-    "dst_ip": "127.0.0.1",
-    "rule_name": "ICMP Flood",
-    "details": "1251 ICMP packets in last 5 seconds to 127.0.0.1"
-  },
-  {
-    "timestamp": 1779653335.9047346,
-    "src_ip": "N/A",
-    "dst_ip": "127.0.0.1",
-    "rule_name": "SYN Flood",
-    "details": "430 SYN packets in last 5 seconds to 127.0.0.1"
-  },
-  {
-    "timestamp": 1779653988.7065322,
-    "src_ip": "127.0.0.1",
-    "dst_ip": "127.0.0.1",
-    "rule_name": "Bruteforce",
-    "details": "430 packets in last 5 seconds to 127.0.0.1:22"
+    "details": "447 UDP packets in last 5 seconds to 192.168.0.17"
   }
 ]
