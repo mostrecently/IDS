@@ -1,1 +1,50 @@
-{}
+{
+  "port_scan": {
+    "enabled": true,
+    "threshold": 100
+  },
+  "syn_flood": {
+    "enabled": true,
+    "threshold": 100,
+    "window_seconds": 5,
+    "cooldown_seconds": 600
+  },
+  "udp_flood": {
+    "enabled": true,
+    "threshold": 300,
+    "window_seconds": 5,
+    "cooldown_seconds": 600
+  },
+  "icmp_flood": {
+    "enabled": false,
+    "threshold": 50,
+    "window_seconds": 5,
+    "cooldown_seconds": 600
+  },
+  "bruteforce": {
+    "enabled": true,
+    "threshold": 30,
+    "window_seconds": 30,
+    "cooldown_seconds": 600,
+    "ports": [21, 22, 23, 80, 443, 445, 1433, 3306, 3389]
+  },
+  "sqli": {
+    "enabled": true,
+    "ports": [80, 443, 8080],
+    "cooldown_seconds": 600,
+    "signatures": [
+        "' OR '1'='1",
+        "' OR 1=1 --",
+        "UNION SELECT",
+        "DROP TABLE",
+        "'; DROP TABLE --",
+        "' OR 'x'='x",
+        "1 AND 1=1",
+        "1 OR 1=1",
+        "1'+OR+'1'='1",           
+        "1' OR '1'='1",           
+        "\\' OR '1'='1",          
+        "\\'+OR+'1'='1"          
+    ]
+  }
+}
