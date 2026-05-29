@@ -1,3 +1,7 @@
+# ============================================================
+# web_app.py — Веб-интерфейс для IDS (ФИНАЛ v3)
+# ============================================================
+
 import json
 import os
 import threading
@@ -6,7 +10,7 @@ from datetime import datetime
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from common import save_alert
+from common import Alert
 import uvicorn
 
 # ----- НАСТРОЙКИ -----
@@ -35,11 +39,25 @@ def read_json_file(filename: str):
     return data
 
 
+def save_alert_to_file(alert: dict):
+    """Сохраняет алерт в alerts.json."""
+    if os.path.exists(ALERTS_FILE):
+        with open(ALERTS_FILE, "r", encoding="utf-8") as f:
+            alerts = json.load(f)
+    else:
+        alerts = []
+    if not isinstance(alerts, list):
+        alerts = []
+    alerts.append(alert)
+    with open(ALERTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(alerts, f, indent=2, ensure_ascii=False)
+
+
 def process_alert_queue():
     print("[Queue] Обработчик очереди алертов запущен")
     while True:
         alert = alert_queue.get()
-        save_alert(alert)
+        save_alert_to_file(alert)
         alert_queue.task_done()
         print(f"[Queue] Алерт записан: {alert.get('rule_name', 'Unknown')} от {alert.get('src_ip', 'Unknown')}")
 
@@ -49,31 +67,43 @@ queue_thread.start()
 
 
 # ============================================================
-# СТАТИСТИКА (подсчёт)
+# КРИТИЧНОСТЬ ПО ПРАВИЛАМ
 # ============================================================
+CRITICALITY_MAP = {
+    "SQLi": "high",
+    "SYN Flood": "high",
+    "TCP Flood": "high",
+    "Bruteforce": "medium",
+    "UDP Flood": "medium",
+    "Port scan detected": "low",
+    "ICMP Flood": "low",
+}
+
+
+def get_criticality(rule_name: str) -> str:
+    return CRITICALITY_MAP.get(rule_name, "low")
+
+
 def get_stats():
     alerts = read_json_file(ALERTS_FILE)
     if not isinstance(alerts, list):
         alerts = []
     rules = read_json_file(RULES_FILE)
-    
+
     total_alerts = len(alerts)
     total_rules = len(rules) if isinstance(rules, (list, dict)) else 0
-    
-    # Счётчики по критичности
-    high = sum(1 for a in alerts if a.get('criticality') == 'high')
-    medium = sum(1 for a in alerts if a.get('criticality') == 'medium')
-    low = sum(1 for a in alerts if a.get('criticality') == 'low')
-    
-    # Счётчики по типам атак
+
+    high = sum(1 for a in alerts if get_criticality(a.get('rule_name', '')) == 'high')
+    medium = sum(1 for a in alerts if get_criticality(a.get('rule_name', '')) == 'medium')
+    low = sum(1 for a in alerts if get_criticality(a.get('rule_name', '')) == 'low')
+
     attack_types = {}
     for a in alerts:
         rule = a.get('rule_name', 'Unknown')
         attack_types[rule] = attack_types.get(rule, 0) + 1
-    
-    # Уникальные IP
-    ips = set(a.get('src_ip', '') for a in alerts if a.get('src_ip'))
-    
+
+    ips = set(a.get('src_ip', '') for a in alerts if a.get('src_ip') and a.get('src_ip') != 'N/A')
+
     return {
         "total_alerts": total_alerts,
         "total_rules": total_rules,
@@ -86,21 +116,23 @@ def get_stats():
     }
 
 
+# ============================================================
 # ГЛАВНАЯ СТРАНИЦА
+# ============================================================
 @app.get("/", response_class=HTMLResponse)
 async def home_page(request: Request):
     stats = get_stats()
     alerts = stats['alerts']
+    alerts = sorted(alerts, key=lambda x: x.get('timestamp', 0), reverse=True)
     alerts_json = json.dumps(alerts, ensure_ascii=False)
-    
+
     total_alerts = stats['total_alerts']
     total_rules = stats['total_rules']
-    
-    # Последние 5 для таблицы
+
     recent = alerts[:5]
     alert_rows = ""
     for a in recent:
-        crit = a.get('criticality', 'low')
+        crit = get_criticality(a.get('rule_name', ''))
         if crit == 'high':
             bg = '#fff5f5'; border = '#e74c3c'; badge_bg = '#fde8e8'; badge_color = '#c0392b'; badge_text = 'ВЫС'
         elif crit == 'medium':
@@ -108,12 +140,12 @@ async def home_page(request: Request):
         else:
             bg = '#f5faff'; border = '#3498db'; badge_bg = '#e0effb'; badge_color = '#2471a3'; badge_text = 'НИЗ'
         alert_rows += f"""<tr style="border-left:4px solid {border}; background:{bg};">
-            <td>{a.get('timestamp','—')[:19]}</td>
+            <td>{a.get('timestamp','—')}</td>
             <td>{a.get('src_ip','—')}</td>
             <td>{a.get('dst_ip','—')}</td>
             <td>{a.get('rule_name','Unknown')}</td>
             <td><span class="badge" style="background:{badge_bg}; color:{badge_color};">{badge_text}</span></td>
-            <td style="max-width:160px; overflow:hidden; text-overflow:ellipsis;">{a.get('payload','—')[:40]}</td>
+            <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">{a.get('details','—')[:60]}</td>
         </tr>"""
 
     html = f"""<!DOCTYPE html>
@@ -153,7 +185,6 @@ async def home_page(request: Request):
         @keyframes pulse {{ 0%,100%{{opacity:1;}} 50%{{opacity:0.3;}} }}
         .live-text {{ color:#2ecc71; font-size:13px; font-weight:600; }}
         
-        /* Мини-статистика */
         .mini-stats {{
             max-width:1400px; margin:0 auto 15px;
             display:flex; gap:12px; flex-wrap:wrap;
@@ -305,7 +336,6 @@ async def home_page(request: Request):
         </div>
     </div>
     
-    <!-- МИНИ-СТАТИСТИКА -->
     <div class="mini-stats">
         <div class="stat-card red">
             <div class="num">{stats['high']}</div>
@@ -343,7 +373,7 @@ async def home_page(request: Request):
                 <div class="link-card-body">
                     <div class="table-wrap">
                         {f'''<table>
-                            <thead><tr><th>Время</th><th>IP ист.</th><th>IP цели</th><th>Правило</th><th>Крит.</th><th>Payload</th></tr></thead>
+                            <thead><tr><th>Время</th><th>IP ист.</th><th>IP цели</th><th>Правило</th><th>Крит.</th><th>Детали</th></tr></thead>
                             <tbody>{alert_rows}</tbody>
                         </table>''' if total_alerts > 0 else '<div class="empty"><span style="font-size:30px;">🛡️</span><p>Алертов пока нет</p></div>'}
                     </div>
@@ -403,14 +433,13 @@ async def home_page(request: Request):
     <script>
         var alertsData = {alerts_json};
         var categories = {{
-            'SQL Injection': {{color:'#e74c3c',criticality:'high'}},
-            'XSS Attack': {{color:'#e74c3c',criticality:'high'}},
-            'Command Injection': {{color:'#e74c3c',criticality:'high'}},
-            'Port Scan': {{color:'#f39c12',criticality:'medium'}},
-            'DNS Tunneling': {{color:'#f39c12',criticality:'medium'}},
-            'Brute Force': {{color:'#f39c12',criticality:'medium'}},
-            'Path Traversal': {{color:'#3498db',criticality:'low'}},
-            'User-Agent Scanner': {{color:'#3498db',criticality:'low'}}
+            'SQLi': {{color:'#e74c3c',criticality:'high'}},
+            'SYN Flood': {{color:'#e74c3c',criticality:'high'}},
+            'TCP Flood': {{color:'#e74c3c',criticality:'high'}},
+            'Bruteforce': {{color:'#f39c12',criticality:'medium'}},
+            'UDP Flood': {{color:'#f39c12',criticality:'medium'}},
+            'Port scan detected': {{color:'#3498db',criticality:'low'}},
+            'ICMP Flood': {{color:'#3498db',criticality:'low'}}
         }};
         
         function buildChart(){{
@@ -421,7 +450,7 @@ async def home_page(request: Request):
                 var cat=categories[a.rule_name]?a.rule_name:'Other';
                 if(!categories[cat])categories[cat]={{color:'#95a5a6',criticality:'low'}};
                 if(!dataByCategory[cat])dataByCategory[cat]=new Array(intervals).fill(0);
-                var diff=Math.floor((new Date()-new Date(a.timestamp))/60000);
+                var diff=Math.floor((new Date()-new Date(a.timestamp*1000))/60000);
                 var idx=intervals-1-Math.floor(diff/5);
                 if(idx>=0&&idx<intervals)dataByCategory[cat][idx]++;
             }});
@@ -456,17 +485,20 @@ async def home_page(request: Request):
 </html>"""
     return HTMLResponse(content=html)
 
+
+# ============================================================
 # СТРАНИЦА ВСЕХ АЛЕРТОВ
+# ============================================================
 @app.get("/alerts", response_class=HTMLResponse)
 async def alerts_page(request: Request):
     alerts = read_json_file(ALERTS_FILE)
     if not isinstance(alerts, list):
         alerts = []
-    alerts = sorted(alerts, key=lambda x: x.get('timestamp', ''), reverse=True)
+    alerts = sorted(alerts, key=lambda x: x.get('timestamp', 0), reverse=True)
 
     rows = ""
     for a in alerts:
-        crit = a.get('criticality', 'low')
+        crit = get_criticality(a.get('rule_name', ''))
         if crit == 'high':
             bg = '#fff5f5'; border = '#e74c3c'; badge_bg = '#fde8e8'; badge_color = '#c0392b'; badge_text = 'ВЫС'
         elif crit == 'medium':
@@ -474,12 +506,12 @@ async def alerts_page(request: Request):
         else:
             bg = '#f5faff'; border = '#3498db'; badge_bg = '#e0effb'; badge_color = '#2471a3'; badge_text = 'НИЗ'
         rows += f"""<tr style="border-left:4px solid {border}; background:{bg};">
-            <td>{a.get('timestamp','—')[:19]}</td>
+            <td>{a.get('timestamp','—')}</td>
             <td>{a.get('src_ip','—')}</td>
             <td>{a.get('dst_ip','—')}</td>
             <td>{a.get('rule_name','Unknown')}</td>
             <td><span class="badge" style="background:{badge_bg}; color:{badge_color};">{badge_text}</span></td>
-            <td>{a.get('payload','—')[:80]}</td>
+            <td>{a.get('details','—')[:100]}</td>
         </tr>"""
 
     total = len(alerts)
@@ -504,7 +536,7 @@ async def alerts_page(request: Request):
         <body>
             <h1>📋 Все алерты ({total})</h1>
             <div class="box">
-                {f'<table><thead><tr><th>Время</th><th>IP ист.</th><th>IP цели</th><th>Правило</th><th>Крит.</th><th>Payload</th></tr></thead><tbody>{rows}</tbody></table>' if total > 0 else '<p>Алертов пока нет</p>'}
+                {f'<table><thead><tr><th>Время</th><th>IP ист.</th><th>IP цели</th><th>Правило</th><th>Крит.</th><th>Детали</th></tr></thead><tbody>{rows}</tbody></table>' if total > 0 else '<p>Алертов пока нет</p>'}
             </div>
             <p style="margin-top:15px;"><a href="/">← На главную</a></p>
         </body>
@@ -513,13 +545,15 @@ async def alerts_page(request: Request):
     return HTMLResponse(content=html)
 
 
+# ============================================================
 # СТРАНИЦА ПРАВИЛ
+# ============================================================
 @app.get("/rules", response_class=HTMLResponse)
 async def rules_page(request: Request):
     rules = read_json_file(RULES_FILE)
     if not isinstance(rules, (list, dict)):
         rules = {}
-    
+
     rule_rows = ""
     if isinstance(rules, list):
         for r in rules:
@@ -533,7 +567,7 @@ async def rules_page(request: Request):
     elif isinstance(rules, dict) and rules:
         for k, v in rules.items():
             rule_rows += f"""<tr><td>{k}</td><td colspan="4"><pre>{json.dumps(v, ensure_ascii=False)}</pre></td></tr>"""
-    
+
     rules_count = len(rules) if isinstance(rules, list) else len(rules) if isinstance(rules, dict) else 0
 
     html = f"""
@@ -564,19 +598,22 @@ async def rules_page(request: Request):
     return HTMLResponse(content=html)
 
 
+# ============================================================
 # СТРАНИЦА СТАТИСТИКИ
+# ============================================================
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_page(request: Request):
     stats = get_stats()
     alerts = stats['alerts']
     alerts_json = json.dumps(alerts, ensure_ascii=False)
-    
-    # Топ-5 атак
+
     attack_types = stats['attack_types']
     top_attacks = sorted(attack_types.items(), key=lambda x: x[1], reverse=True)[:5]
     top_html = ""
     for name, count in top_attacks:
-        top_html += f"<tr><td>{name}</td><td>{count}</td></tr>"
+        crit = get_criticality(name)
+        icon = '⚠️' if crit == 'high' else '⚡' if crit == 'medium' else 'ℹ️'
+        top_html += f"<tr><td>{icon} {name}</td><td>{count}</td></tr>"
 
     html = f"""
     <html>
@@ -677,14 +714,13 @@ async def stats_page(request: Request):
             <script>
                 var alertsData = {alerts_json};
                 var categories = {{
-                    'SQL Injection': {{color:'#e74c3c',criticality:'high'}},
-                    'XSS Attack': {{color:'#e74c3c',criticality:'high'}},
-                    'Command Injection': {{color:'#e74c3c',criticality:'high'}},
-                    'Port Scan': {{color:'#f39c12',criticality:'medium'}},
-                    'DNS Tunneling': {{color:'#f39c12',criticality:'medium'}},
-                    'Brute Force': {{color:'#f39c12',criticality:'medium'}},
-                    'Path Traversal': {{color:'#3498db',criticality:'low'}},
-                    'User-Agent Scanner': {{color:'#3498db',criticality:'low'}}
+                    'SQLi': {{color:'#e74c3c',criticality:'high'}},
+                    'SYN Flood': {{color:'#e74c3c',criticality:'high'}},
+                    'TCP Flood': {{color:'#e74c3c',criticality:'high'}},
+                    'Bruteforce': {{color:'#f39c12',criticality:'medium'}},
+                    'UDP Flood': {{color:'#f39c12',criticality:'medium'}},
+                    'Port scan detected': {{color:'#3498db',criticality:'low'}},
+                    'ICMP Flood': {{color:'#3498db',criticality:'low'}}
                 }};
                 function buildChart(){{
                     if(!alertsData||alertsData.length===0)return;
@@ -694,7 +730,7 @@ async def stats_page(request: Request):
                         var cat=categories[a.rule_name]?a.rule_name:'Other';
                         if(!categories[cat])categories[cat]={{color:'#95a5a6',criticality:'low'}};
                         if(!dataByCategory[cat])dataByCategory[cat]=new Array(intervals).fill(0);
-                        var diff=Math.floor((new Date()-new Date(a.timestamp))/60000);
+                        var diff=Math.floor((new Date()-new Date(a.timestamp*1000))/60000);
                         var idx=intervals-1-Math.floor(diff/5);
                         if(idx>=0&&idx<intervals)dataByCategory[cat][idx]++;
                     }});
@@ -748,14 +784,13 @@ async def api_rules():
 
 @app.get("/api/stats")
 async def api_stats():
-    stats = get_stats()
-    return stats
+    return get_stats()
 
 
 # ----- ЗАПУСК -----
 if __name__ == "__main__":
     print("=" * 60)
-    print("ЗАПУСК ВЕБ-СЕРВЕРА IDS (ФИНАЛ)")
+    print("ЗАПУСК ВЕБ-СЕРВЕРА IDS (ФИНАЛ v3)")
     print("   http://127.0.0.1:8000")
     print("   Ctrl+C для остановки")
     print("=" * 60)
