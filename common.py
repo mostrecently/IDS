@@ -42,6 +42,20 @@ class Packet:
     timestamp: float
     payload: bytes
 
+def _save_alert(alert: Alert):
+    alert_dict = asdict(alert)
+    if os.path.exists("alerts.json"):
+        with open("alerts.json", "r", encoding="utf-8") as f:
+            alerts = json.load(f)
+            alerts.append(alert_dict)
+
+        with open("alerts.json", "w", encoding="utf-8") as f:
+            json.dump(alerts, f, indent=2, ensure_ascii=False)
+    else:
+        alerts = [alert_dict]
+        with open("alerts.json", "w", encoding="utf-8") as f:
+            json.dump(alerts, f, indent=2, ensure_ascii=False)
+
 class FlowTable:
     def __init__(self, timeout=60, cleanup_interval=30):
         self._stop_event = threading.Event()
@@ -103,7 +117,6 @@ class FlowTable:
         if hasattr(pkt, "payload"):
             flow.payload += pkt.payload
             flow.payload = flow.payload[-256:]
-
         if pkt.protocol == 6:
             if hasattr(pkt, 'flags') and (pkt.flags == 0x02):
                 flow.syn_count += 1
@@ -126,11 +139,11 @@ class FlowTable:
     def _clean_loop(self):
         while not self._stop_event.is_set():
             self._cleanup_expired()
-            self.check_for_scans(threshold=100)
-            self.check_for_syn_flood(threshold=100, window_seconds=5)
-            self.check_for_udp_flood(threshold=100, window_seconds=5)
-            self.check_for_icmp_flood(threshold=100, window_seconds=5)
-            self.check_for_bruteforce(threshold=10, window_seconds=5)
+            self.check_for_scans()
+            self.check_for_syn_flood(window_seconds=5)
+            self.check_for_udp_flood(window_seconds=5)
+            self.check_for_icmp_flood(window_seconds=5)
+            self.check_for_bruteforce(window_seconds=5)
             self._stop_event.wait(self.cleanup_interval)
 
     def start_cleaner(self):
@@ -154,21 +167,9 @@ class FlowTable:
             if len(ports) >= threshold:
                     candidates.append((src_ip, len(ports)))
         return candidates
-
+    
     def _save_alert(self, alert: Alert):
-        alert_dict = asdict(alert)
-        if os.path.exists("alerts.json"):
-            with open("alerts.json", "r", encoding="utf-8") as f:
-                alerts = json.load(f)
-
-            alerts.append(alert_dict)
-
-            with open("alerts.json", "w", encoding="utf-8") as f:
-                json.dump(alerts, f, indent=2, ensure_ascii=False)
-        else:
-            alerts = [alert_dict]
-            with open("alerts.json", "w", encoding="utf-8") as f:
-                json.dump(alerts, f, indent=2, ensure_ascii=False)
+        _save_alert(alert)
 
     def check_for_scans(self, threshold=100):
         candidates = self.get_port_scan_candidates(threshold)
@@ -199,7 +200,7 @@ class FlowTable:
                     aggregated[flow.dst_ip].append(ts)
         
         for dst_ip, timestamps in aggregated.items():
-            last_alert = self.alerted_syn_targets.get(dst_ip)
+            last_alert = self.alerted_syn_targets.get(dst_ip)          
             if last_alert is not None and current_time - last_alert < cooldown_seconds:
                 continue
             
@@ -219,7 +220,7 @@ class FlowTable:
                 fresh = [ts for ts in flow.syn_timestamps if ts > (current_time - window_seconds)]
                 flow.syn_timestamps = fresh
 
-    def check_for_udp_flood(self, threshold=500, window_seconds=5, cooldown_seconds=5):
+    def check_for_udp_flood(self, threshold=300, window_seconds=5, cooldown_seconds=5):
         current_time = time.time()
         
         aggregated = {}
@@ -257,6 +258,7 @@ class FlowTable:
         current_time = time.time()
         
         aggregated = {}
+
         for flow in self.flows.values():
             if flow.protocol != 1:
                 continue
@@ -283,7 +285,7 @@ class FlowTable:
                 self.alerted_icmp_targets[dst_ip] = current_time
         
         for flow in self.flows.values():
-            if flow.protocol == 17:
+            if flow.protocol == 1:
                 fresh = [ts for ts in flow.icmp_timestamps if ts > (current_time - window_seconds)]
                 flow.icmp_timestamps = fresh
 
@@ -301,7 +303,7 @@ class FlowTable:
             last_alert = self.alerted_bruteforce.get(key)
             if last_alert is not None and current_time - last_alert < cooldown_seconds:
                 continue
-            
+
             fresh = [ts for ts in flow.packet_timestamps if ts > current_time - window_seconds]
             flow.packet_timestamps = fresh
 
