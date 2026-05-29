@@ -1,3 +1,7 @@
+# ============================================================
+# web_app.py — Веб-интерфейс для IDS (ФИНАЛ v3)
+# ============================================================
+
 import json
 import os
 import threading
@@ -6,7 +10,7 @@ from datetime import datetime
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from common import _save_alert
+from common import Alert
 import uvicorn
 
 ALERTS_FILE = "alerts.json"
@@ -29,11 +33,29 @@ def read_json_file(filename: str):
         return [] if "alerts" in filename else {}
     return data
 
+<<<<<<< HEAD
+=======
+
+def save_alert_to_file(alert: dict):
+    """Сохраняет алерт в alerts.json."""
+    if os.path.exists(ALERTS_FILE):
+        with open(ALERTS_FILE, "r", encoding="utf-8") as f:
+            alerts = json.load(f)
+    else:
+        alerts = []
+    if not isinstance(alerts, list):
+        alerts = []
+    alerts.append(alert)
+    with open(ALERTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(alerts, f, indent=2, ensure_ascii=False)
+
+
+>>>>>>> 746fbab62970b09c03b0eba8823f1d296a36f339
 def process_alert_queue():
     print("[Queue] Обработчик очереди алертов запущен")
     while True:
         alert = alert_queue.get()
-        _save_alert(alert)
+        save_alert_to_file(alert)
         alert_queue.task_done()
         print(f"[Queue] Алерт записан: {alert.get('rule_name', 'Unknown')} от {alert.get('src_ip', 'Unknown')}")
 
@@ -53,6 +75,27 @@ CRITICALITY_MAP = {
 def get_criticality(rule_name: str) -> str:
     return CRITICALITY_MAP.get(rule_name, "low")
 
+<<<<<<< HEAD
+=======
+# ============================================================
+# КРИТИЧНОСТЬ ПО ПРАВИЛАМ
+# ============================================================
+CRITICALITY_MAP = {
+    "SQLi": "high",
+    "SYN Flood": "high",
+    "TCP Flood": "high",
+    "Bruteforce": "medium",
+    "UDP Flood": "medium",
+    "Port scan detected": "low",
+    "ICMP Flood": "low",
+}
+
+
+def get_criticality(rule_name: str) -> str:
+    return CRITICALITY_MAP.get(rule_name, "low")
+
+
+>>>>>>> 746fbab62970b09c03b0eba8823f1d296a36f339
 def get_stats():
     alerts = read_json_file(ALERTS_FILE)
     if not isinstance(alerts, list):
@@ -84,6 +127,13 @@ def get_stats():
         "alerts": alerts
     }
 
+<<<<<<< HEAD
+=======
+
+# ============================================================
+# ГЛАВНАЯ СТРАНИЦА
+# ============================================================
+>>>>>>> 746fbab62970b09c03b0eba8823f1d296a36f339
 @app.get("/", response_class=HTMLResponse)
 async def home_page(request: Request):
     stats = get_stats()
@@ -450,6 +500,13 @@ async def home_page(request: Request):
 </html>"""
     return HTMLResponse(content=html)
 
+<<<<<<< HEAD
+=======
+
+# ============================================================
+# СТРАНИЦА ВСЕХ АЛЕРТОВ
+# ============================================================
+>>>>>>> 746fbab62970b09c03b0eba8823f1d296a36f339
 @app.get("/alerts", response_class=HTMLResponse)
 async def alerts_page(request: Request):
     alerts = read_json_file(ALERTS_FILE)
@@ -558,6 +615,13 @@ async def rules_page(request: Request):
     """
     return HTMLResponse(content=html)
 
+<<<<<<< HEAD
+=======
+
+# ============================================================
+# СТРАНИЦА СТАТИСТИКИ
+# ============================================================
+>>>>>>> 746fbab62970b09c03b0eba8823f1d296a36f339
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_page(request: Request):
     stats = get_stats()
@@ -737,4 +801,18 @@ async def api_rules():
 
 @app.get("/api/stats")
 async def api_stats():
+<<<<<<< HEAD
     return get_stats()
+=======
+    return get_stats()
+
+
+# ----- ЗАПУСК -----
+if __name__ == "__main__":
+    print("=" * 60)
+    print("ЗАПУСК ВЕБ-СЕРВЕРА IDS (ФИНАЛ v3)")
+    print("   http://127.0.0.1:8000")
+    print("   Ctrl+C для остановки")
+    print("=" * 60)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+>>>>>>> 746fbab62970b09c03b0eba8823f1d296a36f339
