@@ -57,17 +57,33 @@ def _save_alert(alert: Alert):
             json.dump(alerts, f, indent=2, ensure_ascii=False)
 
 class FlowTable:
-    def __init__(self, timeout=60, cleanup_interval=30):
+    def __init__(self, rules_path="rules.json", timeout=60, cleanup_interval=30):
         self._stop_event = threading.Event()
         self._cleaner_thread = None
         self.cleanup_interval = cleanup_interval
         self.timeout = timeout
         self.alerted_ips = set()
+        self.rules = self._load_rules(rules_path)
         self.alerted_syn_targets = {}
         self.alerted_udp_targets = {}
         self.alerted_icmp_targets = {}
         self.alerted_bruteforce = {}
+        self.alerted_sqli_targets = {}
         self.flows = {}
+
+    def _load_rules(self, path):
+        if not os.path.exists(path):
+            return {}
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+        
+    def _get_rule_config(self, rule_name, defaults):
+        rule = self.rules.get(rule_name, {})
+        if not rule.get("enabled", True):
+            return None
+        config = defaults.copy()
+        config.update(rule)
+        return config
 
     def _make_key(self, src_ip: str, dst_ip: str, src_port: int, dst_port: int, protocol: int) -> tuple:
         key = (src_ip, dst_ip, src_port, dst_port, protocol)
@@ -140,10 +156,11 @@ class FlowTable:
         while not self._stop_event.is_set():
             self._cleanup_expired()
             self.check_for_scans()
-            self.check_for_syn_flood(window_seconds=5)
-            self.check_for_udp_flood(window_seconds=5)
-            self.check_for_icmp_flood(window_seconds=5)
-            self.check_for_bruteforce(window_seconds=5)
+            self.check_for_syn_flood()
+            self.check_for_udp_flood()
+            self.check_for_icmp_flood()
+            self.check_for_bruteforce()
+            self.check_for_sqli()
             self._stop_event.wait(self.cleanup_interval)
 
     def start_cleaner(self):
@@ -158,7 +175,10 @@ class FlowTable:
 
     def get_port_scan_candidates(self, threshold=100):
         src_ports = {}
-        for flow in self.flows.values():
+
+        flows_snapshot = list(self.flows.values())
+
+        for flow in flows_snapshot:
             if flow.src_ip not in src_ports:
                 src_ports[flow.src_ip] = set()
             src_ports[flow.src_ip].update(flow.dst_ports)
@@ -172,6 +192,15 @@ class FlowTable:
         _save_alert(alert)
 
     def check_for_scans(self, threshold=100):
+        defaults = {
+            "threshold": 100,
+        }
+        config = self._get_rule_config("port_scan", defaults)
+        if config is None:
+            return
+
+        threshold = config["threshold"]
+
         candidates = self.get_port_scan_candidates(threshold)
         for src_ip, ports_count in candidates:
             if src_ip in self.alerted_ips:
@@ -186,11 +215,26 @@ class FlowTable:
             self._save_alert(alert)
             self.alerted_ips.add(src_ip)
 
-    def check_for_syn_flood(self, threshold=100, window_seconds=5, cooldown_seconds=5):
-        current_time = time.time()
+    def check_for_syn_flood(self):
+        defaults = {
+            "threshold": 100,
+            "window_seconds": 5,
+            "cooldown_seconds": 600
+        }
+        config = self._get_rule_config("syn_flood", defaults)
+        if config is None:
+            return
 
+        threshold = config["threshold"]
+        window_seconds = config["window_seconds"]
+        cooldown_seconds = config["cooldown_seconds"]
+
+        current_time = time.time()
         aggregated = {}
-        for flow in self.flows.values():
+
+        flows_snapshot = list(self.flows.values())
+
+        for flow in flows_snapshot:
             if flow.protocol != 6:
                 continue
             if flow.dst_ip not in aggregated:
@@ -220,11 +264,26 @@ class FlowTable:
                 fresh = [ts for ts in flow.syn_timestamps if ts > (current_time - window_seconds)]
                 flow.syn_timestamps = fresh
 
-    def check_for_udp_flood(self, threshold=300, window_seconds=5, cooldown_seconds=5):
-        current_time = time.time()
+    def check_for_udp_flood(self):
+        defaults = {
+            "threshold": 300,
+            "window_seconds": 5,
+            "cooldown_seconds": 600
+        }
+        config = self._get_rule_config("udp_flood", defaults)
+        if config is None:
+            return
+
+        threshold = config["threshold"]
+        window_seconds = config["window_seconds"]
+        cooldown_seconds = config["cooldown_seconds"]        
         
+        current_time = time.time()
         aggregated = {}
-        for flow in self.flows.values():
+
+        flows_snapshot = list(self.flows.values())
+
+        for flow in flows_snapshot:
             if flow.protocol != 17:
                 continue
             if flow.dst_ip not in aggregated:
@@ -254,12 +313,26 @@ class FlowTable:
                 fresh = [ts for ts in flow.udp_timestamps if ts > (current_time - window_seconds)]
                 flow.udp_timestamps = fresh
 
-    def check_for_icmp_flood(self, threshold=50, window_seconds=5, cooldown_seconds=5):
+    def check_for_icmp_flood(self):
+        defaults = {
+            "threshold": 50,
+            "window_seconds": 5,
+            "cooldown_seconds": 600
+        }
+        config = self._get_rule_config("icmp_flood", defaults)
+        if config is None:
+            return
+
+        threshold = config["threshold"]
+        window_seconds = config["window_seconds"]
+        cooldown_seconds = config["cooldown_seconds"]
+
         current_time = time.time()
-        
         aggregated = {}
 
-        for flow in self.flows.values():
+        flows_snapshot = list(self.flows.values())
+
+        for flow in flows_snapshot:
             if flow.protocol != 1:
                 continue
             if flow.dst_ip not in aggregated:
@@ -289,12 +362,28 @@ class FlowTable:
                 fresh = [ts for ts in flow.icmp_timestamps if ts > (current_time - window_seconds)]
                 flow.icmp_timestamps = fresh
 
-    def check_for_bruteforce(self, threshold=10, window_seconds=5, cooldown_seconds=5):
-        bruteforce_ports = {21, 22, 23, 80, 443, 445, 1433, 3306, 3389}
+    def check_for_bruteforce(self):
+        defaults = {
+            "threshold": 100,
+            "window_seconds": 5,
+            "cooldown_seconds": 600,
+            "ports": [21, 22, 23, 80, 443, 445, 1433, 3306, 3389]
+        }
+        config = self._get_rule_config("bruteforce", defaults)
+        if config is None:
+            return
+
+        threshold = config["threshold"]
+        window_seconds = config["window_seconds"]
+        cooldown_seconds = config["cooldown_seconds"]
+        ports = config["ports"]
+        
         current_time = time.time()
 
-        for flow in self.flows.values():
-            if flow.dst_port not in bruteforce_ports:
+        flows_snapshot = list(self.flows.values())
+
+        for flow in flows_snapshot:
+            if flow.dst_port not in ports:
                 continue
             if flow.protocol != 6:
                 continue
@@ -317,3 +406,51 @@ class FlowTable:
                 )
                 self._save_alert(alert)
                 self.alerted_bruteforce[key] = current_time
+
+    def check_for_sqli(self):
+        defaults = {
+            "enabled": True,
+            "ports": [80, 443, 8080],
+            "signatures": [
+                "' OR '1'='1",
+                "' OR 1=1 --",
+                "UNION SELECT",
+                "DROP TABLE",
+                "'; DROP TABLE --",
+                "' OR 'x'='x",
+                "1 AND 1=1",
+                "1 OR 1=1"
+            ]
+        }
+        config = self._get_rule_config("sqli", defaults)
+        if config is None:
+            return
+        
+        ports = config.get("ports", [80, 443])
+        signatures = [sig.lower() for sig in config.get("signatures", [])]
+        current_time = time.time()
+        
+        for flow in list(self.flows.values()):
+            if flow.dst_port not in ports:
+                continue
+            if flow.protocol != 6:
+                continue
+
+            key = (flow.src_ip, flow.dst_ip, flow.dst_port)
+            last_alert = self.alerted_sqli_targets.get(key)
+            if last_alert is not None and current_time - last_alert < config.get("cooldown_seconds", 600):
+                continue
+            
+            payload = flow.payload.decode('utf-8', errors='ignore').lower()
+            for sig in signatures:
+                if sig in payload:
+                    alert = Alert(
+                        timestamp=current_time,
+                        src_ip=flow.src_ip,
+                        dst_ip=flow.dst_ip,
+                        rule_name="SQL Injection",
+                        details=f"Detected '{sig}' in payload to {flow.dst_ip}:{flow.dst_port}"
+                    )
+                    self._save_alert(alert)
+                    self.alerted_sqli_targets[key] = current_time
+                    break 
